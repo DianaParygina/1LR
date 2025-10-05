@@ -62,16 +62,11 @@ pipeline {
         }
         stage('Merge fix into main and sync fix') {
             when {
-                allOf {
-                    expression { 
-                        return env.BRANCH_NAME == 'fix' || env.BRANCH_NAME == 'origin/fix'
-                    }
-                    expression { 
-                        currentBuild.result == null || currentBuild.result == 'SUCCESS' 
-                    }
-                }
+                branch 'fix'
             }
             steps {
+                script {
+                    if (currentBuild.result == null || currentBuild.result == 'SUCCESS') {
                 withCredentials([
                     usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
                     string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
@@ -102,9 +97,11 @@ pipeline {
                         call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
                     """
                 }
+                }
             }
         }
     }
+        
 
     post {
         success {
@@ -112,5 +109,6 @@ pipeline {
             echo "Backend: http://127.0.0.1:8000/"
             echo "Frontend: http://127.0.0.1:5173/"
         }
+    }
     }
 }
