@@ -61,14 +61,8 @@ pipeline {
             }
         }
         stage('Merge fix into main and sync fix') {
-            // !!! ИЗМЕНЕНИЕ ЗДЕСЬ !!!
             when {
-                // Убеждаемся, что пуш был именно в ветку 'fix'
-                // И что предыдущий этап (тесты) завершился успешно
-                allOf {
-                    branch 'fix' 
-                    expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
-                }
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
             }
             steps {
                 withCredentials([
