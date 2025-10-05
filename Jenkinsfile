@@ -2,8 +2,6 @@ pipeline {
     agent any
 
     environment {
-        CURRENT_BRANCH = sh(returnStdout: true, script: 'echo ${env.BRANCH_NAME}').trim()
-
         CMD = 'C:\\Windows\\System32\\cmd.exe'
         PM2_CMD = 'C:\\Users\\Diana\\AppData\\Roaming\\npm\\pm2.cmd'
         PYTHON_EXE = 'C:\\Program Files\\Python313\\python.exe'
