@@ -26,9 +26,6 @@ pipeline {
         }
 
         stage('Start Frontend Server') {
-            // В логе была замечена странная ошибка "//"  ...
-            // Это может быть связано с использованием комментариев Windows (::) или cmd.exe в PM2.
-            // Я добавил дополнительный cd для большей надежности.
             steps {
                 bat """
                     cd "${TARGET_DIR}\\client"
@@ -65,6 +62,7 @@ pipeline {
         
         stage('Merge fix into main and sync fix') {
             when { 
+                // Условие для запуска, если коммит был в ветке 'fix'
                 expression { env.BRANCH_NAME?.contains('fix') || env.GIT_BRANCH?.contains('fix') } 
             }
             steps {
