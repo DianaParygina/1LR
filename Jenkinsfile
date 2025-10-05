@@ -62,7 +62,14 @@ pipeline {
         }
         stage('Merge fix into main and sync fix') {
             when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+                allOf {
+                    expression { 
+                        return env.BRANCH_NAME == 'fix' || env.BRANCH_NAME == 'origin/fix'
+                    }
+                    expression { 
+                        currentBuild.result == null || currentBuild.result == 'SUCCESS' 
+                    }
+                }
             }
             steps {
                 withCredentials([
