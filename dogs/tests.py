@@ -12,7 +12,7 @@ class ModelTests(TestCase):
     def setUp(self):
         # 1. Создаем тестового пользователя (обязательно для Dog и Owner)
         self.user = User.objects.create_user(
-            username='testuser', 
+            username='testuser1', 
             email='test@example.com', # Добавил email, если он требуется
             password='testpassword',
             is_staff=True, # Опционально: можно сделать его штатным сотрудником
