@@ -60,48 +60,60 @@ pipeline {
                 }
             }
         }
-        stage('Merge fix into main and sync fix') {
+       
+       stage('Merge fix into main and sync fix') {
             when {
-                branch 'fix'
+                // Убедимся, что этот этап запускается только при коммите в ветку 'fix'
+                branch 'fix' 
             }
             steps {
                 script {
+                    // Убедимся, что предыдущие этапы (включая тесты) прошли успешно
                     if (currentBuild.result == null || currentBuild.result == 'SUCCESS') {
-                withCredentials([
-                    usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
-                    string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
-                ]) {
-                    bat """
-                        cd "${TARGET_DIR}"
-                        git config user.name "%GIT_USER%"
-                        git config user.email "%GIT_EMAIL%"
+                        withCredentials([
+                            // Проверьте, что 'github-creds' — это Username/Password с токеном
+                            usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
+                            // Проверьте, что 'github-email' — это String Credential с вашим email
+                            string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
+                        ]) {
+                            bat """
+                                cd "${TARGET_DIR}"
+                                
+                                :: 1. Настройка пользователя Git для коммита слияния
+                                git config user.name "%GIT_USER%"
+                                git config user.email "%GIT_EMAIL%"
 
-                        git checkout main
-                        git pull --rebase https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
+                                :: 2. Переключаемся на main, обновляем его
+                                git checkout main
+                                git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
 
-                        :: Сливаем fix (эта команда сработает, только если ветка была 'fix')
-                        git merge fix
+                                :: 3. Слияние fix в main с помощью --no-ff
+                                :: Если возникнет конфликт, команда завершится ошибкой, 
+                                :: и пайплайн остановится, что предотвратит некорректный push.
+                                git merge fix --no-ff
 
-                        git push https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
+                                :: 4. Отправляем слитую ветку main на GitHub
+                                git push https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
 
-                        :: Теперь синхронизируем fix с main (чтобы обе ветки идентичны)
-                        git checkout fix
-                        git reset --hard main
-                        git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git fix
+                                :: 5. Синхронизируем ветку fix с main (делаем их идентичными)
+                                git checkout fix
+                                git reset --hard main
+                                git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git fix
 
-                        :: Перезапуск серверов
-                        call "${PM2_CMD}" delete django || echo No Django process
-                        call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
+                                :: 6. Перезапуск серверов с новыми изменениями (опционально, можно убрать)
+                                call "${PM2_CMD}" delete django || echo No Django process
+                                call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
 
-                        call "${PM2_CMD}" delete vue || echo No Vue process
-                        call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
-                    """
-                }
-                }
+                                call "${PM2_CMD}" delete vue || echo No Vue process
+                                call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
+                            """
+                        }
+                    } else {
+                        echo "Tests failed. Skipping merge."
+                    }
                 }
             }
         }
-    }
         
 
     post {
