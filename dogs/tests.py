@@ -7,7 +7,7 @@ User = get_user_model()
 
 class ModelTests(TestCase):
     """
-    Создание общих объектов, которые будут использоваться во всех тестах
+    Класс для создания общих объектов, которые будут использоваться во всех тестах
     """
     def setUp(self):
         # 1. Создаем тестового пользователя
@@ -17,8 +17,11 @@ class ModelTests(TestCase):
         )
         
         # 2. Создаем базовые связанные объекты
+        # Breed имеет только поле name
         self.breed = Breed.objects.create(name="Лабрадор")
+        # Country имеет только поле country
         self.country = Country.objects.create(country="Россия")
+        # Hobby имеет только поле name_hobby
         self.hobby = Hobby.objects.create(name_hobby="Аджилити")
         
         # 3. Создаем владельца, привязанного к пользователю
@@ -27,6 +30,7 @@ class ModelTests(TestCase):
             last_name="Петров", 
             phone_number="89001234567",
             user=self.user
+            # pictureOwner = models.ImageField... можно пропустить, т.к. null=True
         )
         
         # 4. Создаем собаку, привязанную ко всем объектам
@@ -37,6 +41,7 @@ class ModelTests(TestCase):
             country=self.country,
             hobby=self.hobby,
             user=self.user
+            # picture = models.ImageField... можно пропустить, т.к. null=True
         )
 
 # ----------------------------------------------------------------------
@@ -130,9 +135,6 @@ class DogModelTest(ModelTests):
         
     def test_related_name_access(self):
         """13. Проверяет обратный доступ через related_name."""
-        # Проверка, что через владельца можно получить список его собак
         self.assertIn(self.dog, self.owner.dogs.all())
-        # Проверка, что через страну можно получить список собак
         self.assertIn(self.dog, self.country.dog_country.all())
-        # Проверка, что через хобби можно получить список собак
         self.assertIn(self.dog, self.hobby.dog_hobby.all())
