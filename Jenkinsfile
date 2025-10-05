@@ -2,11 +2,9 @@ pipeline {
     agent any
 
     environment {
-        // Переменные окружения для путей и команд Windows
         CMD = 'C:\\Windows\\System32\\cmd.exe'
         PM2_CMD = 'C:\\Users\\Diana\\AppData\\Roaming\\npm\\pm2.cmd'
         PYTHON_EXE = 'C:\\Program Files\\Python313\\python.exe'
-        // TARGET_DIR — это каталог, где лежат ваши Django/Vue проекты (для запуска и тестов)
         TARGET_DIR = 'C:\\Users\\Diana\\OneDrive\\Desktop\\DevOps\\1LR-Server'
     }
 
@@ -60,9 +58,8 @@ pipeline {
             }
         }
         
-        stage('Merge fix into main and sync fix') {
+        stage('Merge fix into main and deploy') {
             when { 
-                // Условие для запуска, если коммит был в ветке 'fix'
                 expression { env.BRANCH_NAME?.contains('fix') || env.GIT_BRANCH?.contains('fix') } 
             }
             steps {
@@ -73,37 +70,35 @@ pipeline {
                             string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
                         ]) {
                             bat """
-                                :: *** 1. GIT-ОПЕРАЦИИ (ВЫПОЛНЯЮТСЯ В $WORKSPACE) ***
+                                :: *** 1. GIT-ОПЕРАЦИИ (ВЫПОЛНЯЮТСЯ В $WORKSPACE - СЛИЯНИЕ И ПУШ) ***
                                 
                                 :: Настройка пользователя Git
                                 git config user.name "%GIT_USER%"
                                 git config user.email "%GIT_EMAIL%"
 
-                                :: Переключаемся на main, обновляем его
+                                :: Переключаемся на main, обновляем его, сливаем fix и пушим
                                 git checkout main
-                                git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
-
-                                :: ИСПРАВЛЕНИЕ: Слияние удаленной ветки origin/fix
+                                git pull https://%GIT_USER%:%GIT_TOKEN%@[github.com/DianaParygina/1LR.git](https://github.com/DianaParygina/1LR.git) main
                                 git merge origin/fix --no-ff
+                                git push https://%GIT_USER%:%GIT_TOKEN%@[github.com/DianaParygina/1LR.git](https://github.com/DianaParygina/1LR.git) main
 
-                                :: Отправляем слитую ветку main на GitHub
-                                git push https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
-
-                                :: Переключаемся на fix, чтобы синхронизировать
+                                :: Синхронизация fix с обновленным main
                                 git checkout fix
                                 git reset --hard main
-                                git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git fix
-
-                                :: *** 2. PM2-ОПЕРАЦИИ (ПЕРЕХОД В TARGET_DIR) ***
+                                git push --force https://%GIT_USER%:%GIT_TOKEN%@[github.com/DianaParygina/1LR.git](https://github.com/DianaParygina/1LR.git) fix
                                 
-                                :: Переход в каталог Django/Backend для перезапуска
+                                :: *** 2. PM2-ОПЕРАЦИИ (ПЕРЕХОД В TARGET_DIR И ОБНОВЛЕНИЕ КОДА) ***
+                                
+                                :: **КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Обновление кода в целевой папке**
                                 cd "${TARGET_DIR}"
-                                
+                                git checkout main
+                                git pull https://%GIT_USER%:%GIT_TOKEN%@[github.com/DianaParygina/1LR.git](https://github.com/DianaParygina/1LR.git) main
+
                                 :: Перезапуск Django
                                 call "${PM2_CMD}" delete django || echo No Django process
                                 call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
 
-                                :: Переход в каталог Vue/Frontend для перезапуска
+                                :: Переход в каталог Vue/Frontend и перезапуск
                                 cd "${TARGET_DIR}\\client"
                                 call "${PM2_CMD}" delete vue || echo No Vue process
                                 call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
@@ -117,9 +112,10 @@ pipeline {
         }
     }
     
+
     post {
         success {
-            echo "Backend and Frontend are running via PM2!"
+            echo "Backend and Frontend are running via PM2 with the latest code!"
             echo "Backend: http://127.0.0.1:8000/"
             echo "Frontend: http://127.0.0.1:5173/"
         }
