@@ -63,8 +63,9 @@ pipeline {
         
         stage('Merge fix into main and sync fix') {
            when { 
-            expression { env.BRANCH_NAME == 'fix' } 
-           }
+                // ФИНАЛЬНОЕ ИСПРАВЛЕНИЕ: Проверяем, что имя ветки содержит 'fix'
+                expression { env.BRANCH_NAME?.contains('fix') || env.GIT_BRANCH?.contains('fix') } 
+            }
             steps {
                 script {
                     // Продолжаем, только если предыдущие этапы прошли успешно
