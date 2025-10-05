@@ -18,7 +18,7 @@ pipeline {
                 bat """
                     cd "${TARGET_DIR}"
 
-                    call "${PM2_CMD}" delete django  echo No existing Django process
+                    call "${PM2_CMD}" delete django || echo No existing Django process
 
                     call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
                 """
@@ -30,7 +30,7 @@ pipeline {
                 bat """
                     cd "${TARGET_DIR}\\client"
 
-                    call "${PM2_CMD}" delete vue  echo No existing Vue process
+                    call "${PM2_CMD}" delete vue || echo No existing Vue process
 
                     call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
 
@@ -52,8 +52,8 @@ pipeline {
                         echo "Tests failed! Stopping servers..."
 
                         bat """
-                            "${PM2_CMD}" delete django  echo No Django process to delete
-                            "${PM2_CMD}" delete vue  echo No Vue process to delete
+                            "${PM2_CMD}" delete django || echo No Django process to delete
+                            "${PM2_CMD}" delete vue || echo No Vue process to delete
                         """
                         error("Integration tests failed. Servers stopped.")
                     }
@@ -62,7 +62,7 @@ pipeline {
         }
         stage('Merge fix into main and sync fix') {
             when {
-                expression { currentBuild.result == null  currentBuild.result == 'SUCCESS' }
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
             }
             steps {
                 withCredentials([
