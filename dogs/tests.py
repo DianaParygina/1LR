@@ -138,3 +138,4 @@ class DogModelTest(ModelTests):
         self.assertIn(self.dog, self.owner.dogs.all())
         self.assertIn(self.dog, self.country.dog_country.all())
         self.assertIn(self.dog, self.hobby.dog_hobby.all())
+        
