@@ -2,9 +2,11 @@ pipeline {
     agent any
 
     environment {
+        // Переменные окружения для путей и команд Windows
         CMD = 'C:\\Windows\\System32\\cmd.exe'
         PM2_CMD = 'C:\\Users\\Diana\\AppData\\Roaming\\npm\\pm2.cmd'
         PYTHON_EXE = 'C:\\Program Files\\Python313\\python.exe'
+        // TARGET_DIR — это каталог, где лежат ваши Django/Vue проекты (для запуска и тестов)
         TARGET_DIR = 'C:\\Users\\Diana\\OneDrive\\Desktop\\DevOps\\1LR-Server'
     }
 
@@ -17,9 +19,7 @@ pipeline {
             steps {
                 bat """
                     cd "${TARGET_DIR}"
-
                     call "${PM2_CMD}" delete django || echo No existing Django process
-
                     call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
                 """
             }
@@ -29,11 +29,9 @@ pipeline {
             steps {
                 bat """
                     cd "${TARGET_DIR}\\client"
-
                     call "${PM2_CMD}" delete vue || echo No existing Vue process
-
+                    // ВАЖНО: npm run dev запускается через cmd, чтобы обеспечить правильный запуск
                     call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
-
                     echo Frontend started in background via PM2
                 """
             }
@@ -50,7 +48,6 @@ pipeline {
                         echo "Tests passed! Keeping servers running."
                     } catch (err) {
                         echo "Tests failed! Stopping servers..."
-
                         bat """
                             "${PM2_CMD}" delete django || echo No Django process to delete
                             "${PM2_CMD}" delete vue || echo No Vue process to delete
@@ -62,20 +59,21 @@ pipeline {
         }
         
         stage('Merge fix into main and sync fix') {
-           when { 
-                // ФИНАЛЬНОЕ ИСПРАВЛЕНИЕ: Проверяем, что имя ветки содержит 'fix'
+            when { 
+                // Условие, которое сработало, проверяя, что имя ветки содержит 'fix'
                 expression { env.BRANCH_NAME?.contains('fix') || env.GIT_BRANCH?.contains('fix') } 
             }
             steps {
                 script {
-                    // Продолжаем, только если предыдущие этапы прошли успешно
                     if (currentBuild.result == null || currentBuild.result == 'SUCCESS') {
                         withCredentials([
+                            // Ваши учетные данные для доступа к GitHub
                             usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
                             string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
                         ]) {
                             bat """
-                                cd "${TARGET_DIR}"
+                                :: *** 1. GIT-ОПЕРАЦИИ (ВЫПОЛНЯЮТСЯ В $WORKSPACE) ***
+                                :: Здесь мы остаемся в рабочем пространстве Jenkins, чтобы избежать ошибки прав доступа
                                 
                                 :: 1. Настройка пользователя Git для коммита слияния
                                 git config user.name "%GIT_USER%"
@@ -86,7 +84,6 @@ pipeline {
                                 git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
 
                                 :: 3. Слияние fix в main с помощью --no-ff
-                                :: Если возникнет конфликт, команда завершится ошибкой.
                                 git merge fix --no-ff
 
                                 :: 4. Отправляем слитую ветку main на GitHub
@@ -97,10 +94,17 @@ pipeline {
                                 git reset --hard main
                                 git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git fix
 
+                                :: *** 2. PM2-ОПЕРАЦИИ (ПЕРЕХОД В TARGET_DIR) ***
+                                
+                                :: Переход в каталог Django/Backend для перезапуска
+                                cd "${TARGET_DIR}"
+                                
                                 :: 6. Перезапуск серверов с новыми изменениями
                                 call "${PM2_CMD}" delete django || echo No Django process
                                 call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
 
+                                :: Переход в каталог Vue/Frontend для перезапуска
+                                cd "${TARGET_DIR}\\client"
                                 call "${PM2_CMD}" delete vue || echo No Vue process
                                 call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
                             """
@@ -110,8 +114,7 @@ pipeline {
                     }
                 }
             }
-        } // <--- Лишняя закрывающая скобка была здесь
-
+        }
     }
     
     post {
