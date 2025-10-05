@@ -67,22 +67,50 @@ pipeline {
             }
         }
 
-        // --- МЕРЖ И РАЗВЕРТЫВАНИЕ ---
-        stage('Merge fix into main and deploy') {
-            steps {
-                // Выполняем мерж и пуш только если тесты прошли
-                withCredentials([usernamePassword(credentialsId: 'github-credentials', passwordVariable: 'GIT_PASSWORD', usernameVariable: 'GIT_USERNAME')]) {
-                    // Используем GitTool для слияния
-                    gitPush(
-                        credentialsId: 'github-credentials', 
-                        // Слияние fix в main
-                        url: "https://github.com/DianaParygina/1LR.git",
-                        targetBranch: 'main',
-                        sourceBranch: 'fix'
-                    )
-                }
-                echo "Successfully merged 'fix' into 'main' and deployed."
+       stage('Merge fix into main and sync fix') {
+            when {
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
             }
+            steps {
+                withCredentials([
+                    usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
+                    string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
+                ]) {
+                    bat """
+                        cd "${TARGET_DIR}"
+                        git config user.name "%GIT_USER%"
+                        git config user.email "%GIT_EMAIL%"
+
+                        git checkout main
+                        git pull --rebase https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
+
+                        :: Сливаем fix
+                        git merge fix
+
+                        git push https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
+
+                        :: Теперь синхронизируем fix с main (чтобы обе ветки идентичны)
+                        git checkout fix
+                        git reset --hard main
+                        git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git fix
+
+                        :: Перезапуск серверов
+                        call "${PM2_CMD}" delete django  echo No Django process
+                        call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
+
+                        call "${PM2_CMD}" delete vue || echo No Vue process
+                        call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Backend and Frontend are running via PM2!"
+            echo "Backend: http://127.0.0.1:8000/"
+            echo "Frontend: http://127.0.0.1:5173/"
         }
     }
 }
