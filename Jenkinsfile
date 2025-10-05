@@ -2,6 +2,8 @@ pipeline {
     agent any
 
     environment {
+        CURRENT_BRANCH = sh(returnStdout: true, script: 'echo ${env.BRANCH_NAME}').trim()
+
         CMD = 'C:\\Windows\\System32\\cmd.exe'
         PM2_CMD = 'C:\\Users\\Diana\\AppData\\Roaming\\npm\\pm2.cmd'
         PYTHON_EXE = 'C:\\Program Files\\Python313\\python.exe'
@@ -62,10 +64,9 @@ pipeline {
         }
         
         stage('Merge fix into main and sync fix') {
-            when {
-                // Запускается, только если коммит был в ветке 'fix'
-                environment name: 'BRANCH_NAME', value: 'fix' 
-            }
+           when { 
+            expression { env.BRANCH_NAME == 'fix' } 
+           }
             steps {
                 script {
                     // Продолжаем, только если предыдущие этапы прошли успешно
