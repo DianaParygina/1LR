@@ -61,8 +61,14 @@ pipeline {
             }
         }
         stage('Merge fix into main and sync fix') {
+            // !!! ИЗМЕНЕНИЕ ЗДЕСЬ !!!
             when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+                // Убеждаемся, что пуш был именно в ветку 'fix'
+                // И что предыдущий этап (тесты) завершился успешно
+                allOf {
+                    branch 'fix' 
+                    expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+                }
             }
             steps {
                 withCredentials([
@@ -77,7 +83,7 @@ pipeline {
                         git checkout main
                         git pull --rebase https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
 
-                        :: Сливаем fix
+                        :: Сливаем fix (эта команда сработает, только если ветка была 'fix')
                         git merge fix
 
                         git push https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
@@ -88,7 +94,7 @@ pipeline {
                         git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git fix
 
                         :: Перезапуск серверов
-                        call "${PM2_CMD}" delete django  echo No Django process
+                        call "${PM2_CMD}" delete django || echo No Django process
                         call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
 
                         call "${PM2_CMD}" delete vue || echo No Vue process
