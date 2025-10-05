@@ -15,6 +15,7 @@ pipeline {
     }
 
     stages {
+        // Стадии 'Start Backend Server', 'Start Frontend Server', 'Run Tests' остаются без изменений
         stage('Start Backend Server') {
             steps {
                 bat """
@@ -60,9 +61,8 @@ pipeline {
             }
         }
         
-        stage('Merge fix into main and sync fix') {
+        stage('Merge fix into main and deploy') {
             when { 
-                // Условие для запуска, если коммит был в ветке 'fix'
                 expression { env.BRANCH_NAME?.contains('fix') || env.GIT_BRANCH?.contains('fix') } 
             }
             steps {
@@ -73,44 +73,53 @@ pipeline {
                             string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
                         ]) {
                             bat """
-                                :: *** 1. GIT-ОПЕРАЦИИ (ВЫПОЛНЯЮТСЯ В $WORKSPACE) ***
+                                :: *** ПРЕДВАРИТЕЛЬНАЯ НАСТРОЙКА GIT ***
+                                :: 🎯 ИСПРАВЛЕНИЕ #1: Разрешение проблемы прав доступа Git (dubious ownership) 
+                                git config --global --add safe.directory "C:/Users/Diana/OneDrive/Desktop/DevOps/1LR-Server"
                                 
-                                :: Настройка пользователя Git
                                 git config user.name "%GIT_USER%"
                                 git config user.email "%GIT_EMAIL%"
 
-                                :: Переключаемся на main, обновляем его
+                                :: *** 1. GIT-ОПЕРАЦИИ В JENKINS WORKSPACE (СЛИЯНИЕ И PUSH НА GITHUB) ***
+                                
                                 git checkout main
                                 git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
-
-                                :: ИСПРАВЛЕНИЕ: Слияние удаленной ветки origin/fix
                                 git merge origin/fix --no-ff
-
-                                :: Отправляем слитую ветку main на GitHub
                                 git push https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
 
-                                :: Переключаемся на fix, чтобы синхронизировать
                                 git checkout fix
                                 git reset --hard main
                                 git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git fix
 
-                                :: *** 2. PM2-ОПЕРАЦИИ (ПЕРЕХОД В TARGET_DIR) ***
+                                :: *** 2. РАЗВЕРТЫВАНИЕ И ОБНОВЛЕНИЕ КОДА В TARGET_DIR ***
                                 
-                                :: Переход в каталог Django/Backend для перезапуска
                                 cd "${TARGET_DIR}"
+                                
+                                :: Инициализация Git в целевой папке, если она еще не репозиторий
+                                if not exist .git (
+                                    git init
+                                    git remote add origin https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git
+                                )
+
+                                :: 🎯 ИСПРАВЛЕНИЕ #2: Скачиваем самый свежий код из обновленной main и обновляем сервер!
+                                git fetch
+                                git checkout main
+                                git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main 
+
+                                :: *** 3. PM2-ОПЕРАЦИИ (ПЕРЕЗАПУСК) ***
                                 
                                 :: Перезапуск Django
                                 call "${PM2_CMD}" delete django || echo No Django process
                                 call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
 
-                                :: Переход в каталог Vue/Frontend для перезапуска
+                                :: Перезапуск Vue
                                 cd "${TARGET_DIR}\\client"
                                 call "${PM2_CMD}" delete vue || echo No Vue process
                                 call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
                             """
                         }
                     } else {
-                        echo "Tests failed. Skipping merge."
+                        echo "Tests failed. Skipping merge and deployment."
                     }
                 }
             }
@@ -119,7 +128,7 @@ pipeline {
     
     post {
         success {
-            echo "Backend and Frontend are running via PM2!"
+            echo "Deployment successful. Backend and Frontend are running via PM2 with the latest code!"
             echo "Backend: http://127.0.0.1:8000/"
             echo "Frontend: http://127.0.0.1:5173/"
         }
