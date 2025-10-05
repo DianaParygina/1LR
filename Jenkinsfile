@@ -62,17 +62,7 @@ pipeline {
         }
         stage('Merge fix into main and sync fix') {
             when {
-                allOf {
-                    expression { 
-                        // Проверяем, что текущая ветка - 'fix'. 
-                        // env.BRANCH_NAME может быть установлена как 'fix' или как 'origin/fix'.
-                        return env.BRANCH_NAME == 'fix' || env.BRANCH_NAME == 'origin/fix'
-                    }
-                    expression { 
-                        // Проверяем, что тесты прошли успешно
-                        currentBuild.result == null || currentBuild.result == 'SUCCESS' 
-                    }
-                }
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
             }
             steps {
                 withCredentials([
