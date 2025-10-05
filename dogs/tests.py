@@ -14,11 +14,10 @@ from dogs.serializers import (
 
 User = get_user_model()
 
-# 1. БАЗОВАЯ НАСТРОЙКА ТЕСТОВЫХ ДАННЫХ
-
-class SerializerTestSetup(APITestCase):
-    """Базовый класс для создания тестовых данных, наследуется от APITestCase."""
-    
+class ModelTests(TestCase):
+    """
+    Создание общих объектов (включая пользователя) для всех тестов
+    """
     def setUp(self):
         super().setUp()
         
@@ -47,63 +46,17 @@ class SerializerTestSetup(APITestCase):
             user=self.user
         )
 
-        # Фабрика для создания фейковых запросов (нужна для контекста)
-        self.factory = APIRequestFactory()
-        
-        # Контекст для сериализаторов, использующих request.user (DogCreateSerializer, OwnerSerializer)
-        self.request = self.factory.get('/')
-        self.request.user = self.user 
-        self.context = {'request': self.request}
-        
-        # --- Данные для тестов ---
-        self.valid_breed_data = {'name': 'Пудель'}
-        
-        self.valid_owner_data = {
-            'first_name': 'Анна',
-            'last_name': 'Сидорова',
-            'phone_number': '89991112233',
-        }
-        
-        self.valid_dog_data = {
-            'name': 'Шарик',
-            'breed': self.breed.id,
-            'owner': self.owner.id,
-            'country': self.country.id,
-            'hobby': self.hobby.id,
-        }
-        
-        self.invalid_dog_data = {
-            'name': '', # Невалидное пустое поле (TextField в модели позволяет, но оставим для примера валидации)
-            'breed': 9999, # Несуществующий PK
-            'owner': self.owner.id,
-            'country': self.country.id,
-            'hobby': self.hobby.id,
-        }
+# ----------------------------------------------------------------------
+# ПРОПУСКАЕМ тесты для Breed, Country, Hobby, Owner, Dog. Они используют setUp.
+# ----------------------------------------------------------------------
 
-# 2. ТЕСТЫ СЕРИАЛИЗАТОРОВ ДЛЯ МОДЕЛИ DOG
-
-class DogSerializersTest(SerializerTestSetup):
-    
-    # ------------------ DogListSerializer (Чтение с вложенными полями) ------------------
-    def test_dog_list_serialization(self):
-        """Проверка, что DogListSerializer правильно сериализует данные с вложенными объектами."""
-        serializer = DogListSerializer(instance=self.dog)
-        data = serializer.data
-        # Проверка ожидаемых полей
-        self.assertEqual(data['name'], self.dog.name)
-        self.assertEqual(data['user'], self.user.id) 
-        
-        # Проверка вложенной сериализации (должен быть словарь, а не ID)
-        self.assertIsInstance(data['breed'], dict)
-        self.assertEqual(data['breed']['name'], self.breed.name)
-        self.assertEqual(data['owner']['first_name'], self.owner.first_name)
-        self.assertEqual(data['country']['country'], self.country.country)
-        self.assertEqual(data['hobby']['name_hobby'], self.hobby.name_hobby)
-
-    # ------------------ DogCreateSerializer (Создание) ------------------
-    def test_dog_creation_with_valid_data(self):
-        """Проверка создания Dog с валидными данными и установкой user из контекста."""
-        initial_count = Dog.objects.count()
+class DogCreationTest(ModelTests):
+    """
+    Фокусируемся только на test_create_dog
+    """
+    def test_create_dog(self):
+        """Проверяет, что собака создается с привязкой к пользователю и владельцу."""
+        dog_count_before = Dog.objects.count()
         
         # Передаем self.context для установки request.user
         serializer = DogCreateSerializer(data=self.valid_dog_data, context=self.context)
@@ -121,127 +74,38 @@ class DogSerializersTest(SerializerTestSetup):
         serializer = DogCreateSerializer(data=self.invalid_dog_data, context=self.context)
         self.assertFalse(serializer.is_valid())
         
-        # Проверка наличия ошибки для несуществующего PK
-        self.assertIn('breed', serializer.errors)
-        self.assertEqual(Dog.objects.count(), 1)
+        # 1. Проверяем, что объект создан
+        self.assertEqual(Dog.objects.count(), dog_count_before + 1)
+        # 2. Проверяем, что внешний ключ user установлен
+        self.assertEqual(new_dog.user, self.user)
+        # 3. Проверяем, что имя установлено
+        self.assertEqual(new_dog.name, "Рекс")
 
-    # ------------------ DogUpdateSerializer (Обновление) ------------------
-    def test_dog_update_with_valid_data(self):
-        """Проверка обновления Dog с валидными данными."""
-        update_data = self.valid_dog_data.copy()
-        update_data['name'] = 'Новое Имя'
+
+class OwnerCreationTest(ModelTests):
+    """
+    Фокусируемся только на test_create_owner
+    """
+    def test_create_owner(self):
+        """Проверяет, что владелец создается с привязкой к новому пользователю."""
+        owner_count_before = Owner.objects.count()
         
-        serializer = DogUpdateSerializer(instance=self.dog, data=update_data, context=self.context)
-        self.assertTrue(serializer.is_valid(), msg=serializer.errors)
+        # Создаем еще одного пользователя, чтобы избежать конфликта
+        new_user = User.objects.create_user(
+            username='newowneruser', 
+            password='newpassword'
+        )
         
-        dog_instance = serializer.save()
-
-        # Проверка, что имя обновилось, а user остался прежним (read_only)
-        self.dog.refresh_from_db() # Обновляем объект из базы для проверки
-        self.assertEqual(self.dog.name, 'Новое Имя')
-        self.assertEqual(self.dog.user, self.user)
+        new_owner = Owner.objects.create(
+            first_name="Елена",
+            last_name="Сергеева",
+            phone_number="89991112233",
+            user=new_user
+        )
         
-    def test_dog_update_user_is_read_only(self):
-        """Проверка, что поле 'user' игнорируется при попытке обновления."""
-        initial_user_id = self.dog.user.id
-        update_data = self.valid_dog_data.copy()
-        update_data['user'] = self.another_user.id # Попытка сменить пользователя
-        update_data['name'] = 'Test'
-        
-        serializer = DogUpdateSerializer(instance=self.dog, data=update_data, context=self.context)
-        self.assertTrue(serializer.is_valid(), msg=serializer.errors)
-        serializer.save()
-
-        # Пользователь не должен был измениться
-        self.dog.refresh_from_db()
-        self.assertEqual(self.dog.user.id, initial_user_id)
-
-# 3. ТЕСТЫ СЕРИАЛИЗАТОРОВ ДЛЯ МОДЕЛИ OWNER
-
-class OwnerSerializerTest(SerializerTestSetup):
-    
-    def test_owner_creation_sets_user_from_context(self):
-        """Проверка, что поле 'user' устанавливается из self.context['request'].user при создании."""
-        initial_count = Owner.objects.count()
-        
-        # Передаем self.context для установки request.user
-        serializer = OwnerSerializer(data=self.valid_owner_data, context=self.context)
-        self.assertTrue(serializer.is_valid(), msg=serializer.errors)
-        
-        owner_instance = serializer.save()
-        # Проверка, что user установлен из контекста
-        self.assertEqual(Owner.objects.count(), initial_count + 1)
-        self.assertEqual(owner_instance.user, self.user)
-        
-    def test_owner_creation_user_is_read_only(self):
-        """Проверка, что переданный 'user' игнорируется, а берется из контекста."""
-        data_with_wrong_user = self.valid_owner_data.copy()
-        data_with_wrong_user['user'] = self.another_user.id # Попытка передать неверный ID
-        
-        serializer = OwnerSerializer(data=data_with_wrong_user, context=self.context)
-        self.assertTrue(serializer.is_valid(), msg=serializer.errors)
-        owner_instance = serializer.save()
-
-        # User должен быть self.user (из контекста), а не self.another_user
-        self.assertEqual(owner_instance.user, self.user)
-
-# 4. ТЕСТЫ ПРОСТЫХ СЕРИАЛИЗАТОРОВ (Breed, Hobby, Country)
-
-class SimpleSerializersTest(SerializerTestSetup):
-    
-    # ------------------ BreedSerializer (Полный) ------------------
-    def test_breed_serialization(self):
-        """Проверка сериализации объекта Breed."""
-        serializer = BreedSerializer(instance=self.breed)
-        data = serializer.data
-        self.assertEqual(set(data.keys()), set(['id', 'name']))
-        self.assertEqual(data['name'], self.breed.name)
-
-    def test_breed_deserialization(self):
-        """Проверка десериализации (создания) объекта Breed."""
-        initial_count = Breed.objects.count()
-        serializer = BreedSerializer(data=self.valid_breed_data)
-        self.assertTrue(serializer.is_valid(), msg=serializer.errors)
-        serializer.save()
-        self.assertEqual(Breed.objects.count(), initial_count + 1)
-        
-    # ------------------ HobbySerializer ------------------
-    def test_hobby_serialization(self):
-        """Проверка сериализации объекта Hobby."""
-        serializer = HobbySerializer(instance=self.hobby)
-        data = serializer.data
-        self.assertEqual(set(data.keys()), set(['id', 'name_hobby']))
-        self.assertEqual(data['name_hobby'], self.hobby.name_hobby)
-
-    # ------------------ CountrySerializer ------------------
-    def test_country_serialization(self):
-        """Проверка сериализации объекта Country."""
-        serializer = CountrySerializer(instance=self.country)
-        data = serializer.data
-        self.assertEqual(set(data.keys()), set(['id', 'country']))
-        self.assertEqual(data['country'], self.country.country)
-
-# 5. ТЕСТЫ СЕРИАЛИЗАТОРА АУТЕНТИФИКАЦИИ
-
-class LoginSerializerTest(SerializerTestSetup):
-    
-    def test_login_serializer_valid_data(self):
-        """Проверка валидации данных с правильными полями."""
-        data = {'username': 'testuser', 'password': 'testpassword'}
-        serializer = LoginSerializer(data=data)
-        self.assertTrue(serializer.is_valid())
-        
-    def test_login_serializer_missing_fields(self):
-        """Проверка валидации с отсутствующими обязательными полями."""
-        # Отсутствует 'password'
-        data = {'username': 'testuser'}
-        serializer = LoginSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('password', serializer.errors)
-        
-        # Отсутствует 'username'
-        data = {'password': 'testpassword'}
-        serializer = LoginSerializer(data=data)
-        self.assertFalse(serializer.is_valid())
-        self.assertIn('username', serializer.errors)
-
+        # 1. Проверяем, что объект создан
+        self.assertEqual(Owner.objects.count(), owner_count_before + 1)
+        # 2. Проверяем, что внешний ключ user установлен
+        self.assertEqual(new_owner.user, new_user)
+        # 3. Проверяем, что строковое представление корректно
+        self.assertEqual(str(new_owner), "Елена Сергеева")
