@@ -60,55 +60,64 @@ pipeline {
                 }
             }
         }
+        
         stage('Merge fix into main and sync fix') {
             when {
-                branch 'fix'
+                // Запускается, только если коммит был в ветке 'fix'
+                branch 'fix' 
             }
             steps {
                 script {
+                    // Продолжаем, только если предыдущие этапы прошли успешно
                     if (currentBuild.result == null || currentBuild.result == 'SUCCESS') {
-                withCredentials([
-                    usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
-                    string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
-                ]) {
-                    bat """
-                        cd "${TARGET_DIR}"
-                        git config user.name "%GIT_USER%"
-                        git config user.email "%GIT_EMAIL%"
+                        withCredentials([
+                            usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
+                            string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
+                        ]) {
+                            bat """
+                                cd "${TARGET_DIR}"
+                                
+                                :: 1. Настройка пользователя Git для коммита слияния
+                                git config user.name "%GIT_USER%"
+                                git config user.email "%GIT_EMAIL%"
 
-                        git checkout main
-                        git pull --rebase https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
+                                :: 2. Переключаемся на main, обновляем его
+                                git checkout main
+                                git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
 
-                        :: Сливаем fix (эта команда сработает, только если ветка была 'fix')
-                        git merge fix
+                                :: 3. Слияние fix в main с помощью --no-ff
+                                :: Если возникнет конфликт, команда завершится ошибкой.
+                                git merge fix --no-ff
 
-                        git push https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
+                                :: 4. Отправляем слитую ветку main на GitHub
+                                git push https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
 
-                        :: Теперь синхронизируем fix с main (чтобы обе ветки идентичны)
-                        git checkout fix
-                        git reset --hard main
-                        git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git fix
+                                :: 5. Синхронизируем ветку fix с main
+                                git checkout fix
+                                git reset --hard main
+                                git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git fix
 
-                        :: Перезапуск серверов
-                        call "${PM2_CMD}" delete django || echo No Django process
-                        call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
+                                :: 6. Перезапуск серверов с новыми изменениями
+                                call "${PM2_CMD}" delete django || echo No Django process
+                                call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
 
-                        call "${PM2_CMD}" delete vue || echo No Vue process
-                        call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
-                    """
-                }
+                                call "${PM2_CMD}" delete vue || echo No Vue process
+                                call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
+                            """
+                        }
+                    } else {
+                        echo "Tests failed. Skipping merge."
+                    }
                 }
             }
-        }
+        } 
     }
-        
-
+    
     post {
         success {
             echo "Backend and Frontend are running via PM2!"
             echo "Backend: http://127.0.0.1:8000/"
             echo "Frontend: http://127.0.0.1:5173/"
         }
-    }
     }
 }
