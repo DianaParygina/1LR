@@ -14,9 +14,7 @@ from dogs.serializers import (
 
 User = get_user_model()
 
-# ==============================================================================
 # 1. БАЗОВАЯ НАСТРОЙКА ТЕСТОВЫХ ДАННЫХ
-# ==============================================================================
 
 class SerializerTestSetup(APITestCase):
     """Базовый класс для создания тестовых данных, наследуется от APITestCase."""
@@ -82,9 +80,7 @@ class SerializerTestSetup(APITestCase):
             'hobby': self.hobby.id,
         }
 
-# ==============================================================================
 # 2. ТЕСТЫ СЕРИАЛИЗАТОРОВ ДЛЯ МОДЕЛИ DOG
-# ==============================================================================
 
 class DogSerializersTest(SerializerTestSetup):
     
@@ -158,11 +154,9 @@ class DogSerializersTest(SerializerTestSetup):
 
         # Пользователь не должен был измениться
         self.dog.refresh_from_db()
-        self.assertEqual(self.dog.user.id, initial_user_id) # ID должен остаться прежним
+        self.assertEqual(self.dog.user.id, initial_user_id)
 
-# ==============================================================================
 # 3. ТЕСТЫ СЕРИАЛИЗАТОРОВ ДЛЯ МОДЕЛИ OWNER
-# ==============================================================================
 
 class OwnerSerializerTest(SerializerTestSetup):
     
@@ -191,9 +185,7 @@ class OwnerSerializerTest(SerializerTestSetup):
         # User должен быть self.user (из контекста), а не self.another_user
         self.assertEqual(owner_instance.user, self.user)
 
-# ==============================================================================
 # 4. ТЕСТЫ ПРОСТЫХ СЕРИАЛИЗАТОРОВ (Breed, Hobby, Country)
-# ==============================================================================
 
 class SimpleSerializersTest(SerializerTestSetup):
     
@@ -229,9 +221,7 @@ class SimpleSerializersTest(SerializerTestSetup):
         self.assertEqual(set(data.keys()), set(['id', 'country']))
         self.assertEqual(data['country'], self.country.country)
 
-# ==============================================================================
 # 5. ТЕСТЫ СЕРИАЛИЗАТОРА АУТЕНТИФИКАЦИИ
-# ==============================================================================
 
 class LoginSerializerTest(SerializerTestSetup):
     
