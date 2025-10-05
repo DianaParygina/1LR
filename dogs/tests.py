@@ -1,80 +1,138 @@
 from django.test import TestCase
-from django.urls import reverse
-from dogs.models import Dog, Breed # Убедитесь, что ваши модели называются Breed и Dog
+from django.contrib.auth import get_user_model
+from dogs.models import Breed, Dog, Owner, Country, Hobby
 
-class DogModelTest(TestCase):
-    """
-    Тесты для модели Dog (Собака).
-    """
+# Получаем модель пользователя Django для создания владельцев
+User = get_user_model()
 
+class ModelTests(TestCase):
+    """
+    Создание общих объектов, которые будут использоваться во всех тестах
+    """
     def setUp(self):
-        # Создаем тестовую породу, необходимую для создания собаки
-        self.breed = Breed.objects.create(
-            name='Labrador',
-            size='Large',
-            country='USA'
+        # 1. Создаем тестового пользователя
+        self.user = User.objects.create_user(
+            username='testuser', 
+            password='testpassword'
         )
-        # Создаем тестовый объект Dog
+        
+        # 2. Создаем базовые связанные объекты
+        self.breed = Breed.objects.create(name="Лабрадор")
+        self.country = Country.objects.create(country="Россия")
+        self.hobby = Hobby.objects.create(name_hobby="Аджилити")
+        
+        # 3. Создаем владельца, привязанного к пользователю
+        self.owner = Owner.objects.create(
+            first_name="Иван", 
+            last_name="Петров", 
+            phone_number="89001234567",
+            user=self.user
+        )
+        
+        # 4. Создаем собаку, привязанную ко всем объектам
         self.dog = Dog.objects.create(
-            name='Buddy',
-            age=5,
+            name="Шарик",
             breed=self.breed,
-            is_vaccinated=True
+            owner=self.owner,
+            country=self.country,
+            hobby=self.hobby,
+            user=self.user
         )
 
-    # 1. Тест создания объекта Dog
-    def test_dog_creation(self):
-        """Проверяет, что объект Dog создан корректно."""
-        self.assertEqual(self.dog.name, 'Buddy')
-        self.assertEqual(self.dog.age, 5)
-        self.assertTrue(self.dog.is_vaccinated)
-        self.assertEqual(self.dog.breed.name, 'Labrador')
+# ----------------------------------------------------------------------
 
-    # 2. Тест строкового представления (метод __str__)
-    def test_string_representation(self):
-        """Проверяет корректность метода __str__ модели Dog."""
-        expected_string = 'Buddy (Labrador)'
-        self.assertEqual(str(self.dog), expected_string)
-        
-    # 3. Тест возраста собаки
-    def test_dog_age_validation(self):
-        """Проверяет, что возраст собаки корректный."""
-        new_dog = Dog.objects.create(name='Max', age=1, breed=self.breed)
-        self.assertTrue(new_dog.age >= 0)
-        
-class BreedModelTest(TestCase):
+class BreedModelTest(ModelTests):
     """
     Тесты для модели Breed (Порода).
     """
 
-    # 4. Тест создания объекта Breed
-    def test_breed_creation(self):
-        """Проверяет, что объект Breed создан корректно."""
-        breed = Breed.objects.create(name='Poodle', size='Small')
-        self.assertEqual(breed.name, 'Poodle')
-        self.assertEqual(breed.size, 'Small')
-        
-    # 5. Тест строкового представления (метод __str__)
-    def test_breed_string_representation(self):
-        """Проверяет корректность метода __str__ модели Breed."""
-        breed = Breed.objects.create(name='German Shepherd')
-        self.assertEqual(str(breed), 'German Shepherd')
+    def test_breed_creation_and_fields(self):
+        """1. Проверяет, что порода создана и поле 'name' корректно."""
+        self.assertEqual(self.breed.name, "Лабрадор")
 
-class DogViewTest(TestCase):
+    def test_breed_str_representation(self):
+        """2. Проверяет строковое представление (str) породы."""
+        self.assertEqual(str(self.breed), "Лабрадор")
+        
+# ----------------------------------------------------------------------
+
+class CountryModelTest(ModelTests):
     """
-    Тесты для проверки доступности страниц (View).
+    Тесты для модели Country (Страна проживания).
     """
     
-    # Добавляем фиктивные данные для теста (аналогично DogModelTest)
-    def setUp(self):
-        self.breed = Breed.objects.create(name='Bulldog', size='Medium')
-        Dog.objects.create(name='Rocky', age=3, breed=self.breed)
+    def test_country_creation_and_fields(self):
+        """3. Проверяет, что страна создана и поле 'country' корректно."""
+        self.assertEqual(self.country.country, "Россия")
+
+    def test_country_str_representation(self):
+        """4. Проверяет строковое представление (str) страны."""
+        self.assertEqual(str(self.country), "Россия")
         
-    # 6. Тест страницы со списком собак
-    def test_dogs_list_view(self):
-        """Проверяет, что страница списка собак доступна."""
-        # Используйте 'dogs:dog_list' или другой name, который вы используете в urls.py
-        # Если вы используете Django REST Framework и не имеете view, можете пропустить этот тест.
-        # response = self.client.get(reverse('dogs:dog_list')) 
-        # self.assertEqual(response.status_code, 200)
-        pass # Замените на реальный тест, если у вас есть View.
+# ----------------------------------------------------------------------
+
+class HobbyModelTest(ModelTests):
+    """
+    Тесты для модели Hobby (Хобби).
+    """
+    
+    def test_hobby_creation_and_fields(self):
+        """5. Проверяет, что хобби создано и поле 'name_hobby' корректно."""
+        self.assertEqual(self.hobby.name_hobby, "Аджилити")
+
+    def test_hobby_str_representation(self):
+        """6. Проверяет строковое представление (str) хобби."""
+        self.assertEqual(str(self.hobby), "Аджилити")
+
+# ----------------------------------------------------------------------
+
+class OwnerModelTest(ModelTests):
+    """
+    Тесты для модели Owner (Владелец).
+    """
+
+    def test_owner_creation_and_fields(self):
+        """7. Проверяет создание владельца и основные поля."""
+        self.assertEqual(self.owner.first_name, "Иван")
+        self.assertEqual(self.owner.last_name, "Петров")
+        self.assertEqual(self.owner.phone_number, "89001234567")
+
+    def test_owner_str_representation(self):
+        """8. Проверяет строковое представление (str) владельца."""
+        self.assertEqual(str(self.owner), "Иван Петров")
+
+    def test_owner_user_name_property(self):
+        """9. Проверяет корректность @property user_name."""
+        self.assertEqual(self.owner.user_name, "testuser")
+        
+# ----------------------------------------------------------------------
+
+class DogModelTest(ModelTests):
+    """
+    Тесты для модели Dog (Собака).
+    """
+
+    def test_dog_creation_and_fields(self):
+        """10. Проверяет создание собаки и поле 'name'."""
+        self.assertEqual(self.dog.name, "Шарик")
+        self.assertEqual(self.dog.user, self.user)
+
+    def test_dog_relationships(self):
+        """11. Проверяет корректность внешних ключей (связей)."""
+        self.assertEqual(self.dog.breed.name, "Лабрадор")
+        self.assertEqual(self.dog.owner.first_name, "Иван")
+        self.assertEqual(self.dog.country.country, "Россия")
+        self.assertEqual(self.dog.hobby.name_hobby, "Аджилити")
+        
+    def test_dog_str_representation(self):
+        """12. Проверяет строковое представление (str) собаки."""
+        self.assertEqual(str(self.dog), "Шарик")
+        
+    def test_related_name_access(self):
+        """13. Проверяет обратный доступ через related_name."""
+        # Проверка, что через владельца можно получить список его собак
+        self.assertIn(self.dog, self.owner.dogs.all())
+        # Проверка, что через страну можно получить список собак
+        self.assertIn(self.dog, self.country.dog_country.all())
+        # Проверка, что через хобби можно получить список собак
+        self.assertIn(self.dog, self.hobby.dog_hobby.all())
