@@ -45,7 +45,7 @@ pipeline {
                     try {
                         bat """
                             cd "${TARGET_DIR}"
-                            "${PYTHON_EXE}" dogs\\tests.py
+                            "${PYTHON_EXE}" manage.py test dogs
                         """
                         echo "Tests passed! Keeping servers running."
                     } catch (err) {
