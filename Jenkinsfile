@@ -64,7 +64,7 @@ pipeline {
         stage('Merge fix into main and sync fix') {
             when {
                 // Запускается, только если коммит был в ветке 'fix'
-                branch 'fix' 
+                environment name: 'BRANCH_NAME', value: 'fix' 
             }
             steps {
                 script {
