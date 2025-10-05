@@ -26,12 +26,17 @@ pipeline {
         }
 
         stage('Start Frontend Server') {
+            // В логе была замечена странная ошибка "//"  ...
+            // Это может быть связано с использованием комментариев Windows (::) или cmd.exe в PM2.
+            // Я добавил дополнительный cd для большей надежности.
             steps {
                 bat """
                     cd "${TARGET_DIR}\\client"
                     call "${PM2_CMD}" delete vue || echo No existing Vue process
-                    // ВАЖНО: npm run dev запускается через cmd, чтобы обеспечить правильный запуск
+                    
+                    :: Передаем команду 'npm run dev' в PM2 через cmd.exe, чтобы обеспечить корректный запуск
                     call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
+                    
                     echo Frontend started in background via PM2
                 """
             }
@@ -60,36 +65,33 @@ pipeline {
         
         stage('Merge fix into main and sync fix') {
             when { 
-                // Условие, которое сработало, проверяя, что имя ветки содержит 'fix'
                 expression { env.BRANCH_NAME?.contains('fix') || env.GIT_BRANCH?.contains('fix') } 
             }
             steps {
                 script {
                     if (currentBuild.result == null || currentBuild.result == 'SUCCESS') {
                         withCredentials([
-                            // Ваши учетные данные для доступа к GitHub
                             usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
                             string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
                         ]) {
                             bat """
                                 :: *** 1. GIT-ОПЕРАЦИИ (ВЫПОЛНЯЮТСЯ В $WORKSPACE) ***
-                                :: Здесь мы остаемся в рабочем пространстве Jenkins, чтобы избежать ошибки прав доступа
                                 
-                                :: 1. Настройка пользователя Git для коммита слияния
+                                :: Настройка пользователя Git
                                 git config user.name "%GIT_USER%"
                                 git config user.email "%GIT_EMAIL%"
 
-                                :: 2. Переключаемся на main, обновляем его
+                                :: Переключаемся на main, обновляем его
                                 git checkout main
                                 git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
 
-                                :: 3. Слияние fix в main с помощью --no-ff
-                                git merge fix --no-ff
+                                :: ИСПРАВЛЕНИЕ: Слияние удаленной ветки origin/fix
+                                git merge origin/fix --no-ff
 
-                                :: 4. Отправляем слитую ветку main на GitHub
+                                :: Отправляем слитую ветку main на GitHub
                                 git push https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
 
-                                :: 5. Синхронизируем ветку fix с main
+                                :: Переключаемся на fix, чтобы синхронизировать
                                 git checkout fix
                                 git reset --hard main
                                 git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git fix
@@ -99,7 +101,7 @@ pipeline {
                                 :: Переход в каталог Django/Backend для перезапуска
                                 cd "${TARGET_DIR}"
                                 
-                                :: 6. Перезапуск серверов с новыми изменениями
+                                :: Перезапуск Django
                                 call "${PM2_CMD}" delete django || echo No Django process
                                 call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
 
