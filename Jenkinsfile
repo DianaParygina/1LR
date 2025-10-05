@@ -63,6 +63,7 @@ pipeline {
         
         stage('Merge fix into main and sync fix') {
             when {
+<<<<<<< HEAD
                 // Запускается, только если коммит был в ветке 'fix'
                 branch 'fix' 
             }
@@ -80,6 +81,26 @@ pipeline {
                                 :: 1. Настройка пользователя Git для коммита слияния
                                 git config user.name "%GIT_USER%"
                                 git config user.email "%GIT_EMAIL%"
+=======
+                allOf {
+                    expression { 
+                        return env.BRANCH_NAME == 'fix' || env.BRANCH_NAME == 'origin/fix'
+                    }
+                    expression { 
+                        currentBuild.result == null || currentBuild.result == 'SUCCESS' 
+                    }
+                }
+            }
+            steps {
+                withCredentials([
+                    usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
+                    string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
+                ]) {
+                    bat """
+                        cd "${TARGET_DIR}"
+                        git config user.name "%GIT_USER%"
+                        git config user.email "%GIT_EMAIL%"
+>>>>>>> 2efd860ca8f288f6a0e8642d925bb73b05b2adf7
 
                                 :: 2. Переключаемся на main, обновляем его
                                 git checkout main
@@ -108,11 +129,21 @@ pipeline {
                     } else {
                         echo "Tests failed. Skipping merge."
                     }
+<<<<<<< HEAD
                 }
             }
         } 
     }
     
+=======
+                }
+                }
+            }
+        } // <--- Лишняя закрывающая скобка была здесь
+
+    }
+
+>>>>>>> 2efd860ca8f288f6a0e8642d925bb73b05b2adf7
     post {
         success {
             echo "Backend and Frontend are running via PM2!"
