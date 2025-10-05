@@ -60,20 +60,18 @@ pipeline {
                 }
             }
         }
-       
-       stage('Merge fix into main and sync fix') {
+        
+        stage('Merge fix into main and sync fix') {
             when {
-                // Убедимся, что этот этап запускается только при коммите в ветку 'fix'
+                // Запускается, только если коммит был в ветке 'fix'
                 branch 'fix' 
             }
             steps {
                 script {
-                    // Убедимся, что предыдущие этапы (включая тесты) прошли успешно
+                    // Продолжаем, только если предыдущие этапы прошли успешно
                     if (currentBuild.result == null || currentBuild.result == 'SUCCESS') {
                         withCredentials([
-                            // Проверьте, что 'github-creds' — это Username/Password с токеном
                             usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
-                            // Проверьте, что 'github-email' — это String Credential с вашим email
                             string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
                         ]) {
                             bat """
@@ -88,19 +86,18 @@ pipeline {
                                 git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
 
                                 :: 3. Слияние fix в main с помощью --no-ff
-                                :: Если возникнет конфликт, команда завершится ошибкой, 
-                                :: и пайплайн остановится, что предотвратит некорректный push.
+                                :: Если возникнет конфликт, команда завершится ошибкой.
                                 git merge fix --no-ff
 
                                 :: 4. Отправляем слитую ветку main на GitHub
                                 git push https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
 
-                                :: 5. Синхронизируем ветку fix с main (делаем их идентичными)
+                                :: 5. Синхронизируем ветку fix с main
                                 git checkout fix
                                 git reset --hard main
                                 git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git fix
 
-                                :: 6. Перезапуск серверов с новыми изменениями (опционально, можно убрать)
+                                :: 6. Перезапуск серверов с новыми изменениями
                                 call "${PM2_CMD}" delete django || echo No Django process
                                 call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
 
@@ -113,9 +110,10 @@ pipeline {
                     }
                 }
             }
-        }
-        
+        } // <--- Лишняя закрывающая скобка была здесь
 
+    }
+    
     post {
         success {
             echo "Backend and Frontend are running via PM2!"
