@@ -1,141 +1,415 @@
 from django.test import TestCase
-from django.contrib.auth import get_user_model
-from dogs.models import Breed, Dog, Owner, Country, Hobby
+from dogs.models import Breed, Dog, Hobby, Owner, Country
+from model_bakery import baker
+from rest_framework.test import APIClient
 
-# Получаем модель пользователя Django для создания владельцев
-User = get_user_model()
 
-class ModelTests(TestCase):
-    """
-    Класс для создания общих объектов, которые будут использоваться во всех тестах
-    """
-    def setUp(self):
-        # 1. Создаем тестового пользователя
-        self.user = User.objects.create_user(
-            username='testuser', 
-            password='testpassword'
+# Create your tests here.
+class DogsViewsetTestCase(TestCase):
+    def setUp(self) -> None:
+        self.client = APIClient()
+
+    def test_list(self):
+        self.assertEqual(1,1)
+
+    def test_get_list(self):
+        brd = baker.make("dogs.Breed")
+        dog = baker.make("Dog", breed=brd)
+
+        r = self.client.get('/api/dogs/')
+        data = r.json()
+        print(data)
+
+        assert dog.name == data[0]['name']
+        assert dog.id == data[0]['id']
+        assert dog.breed.id == data[0]['breed']['id']
+        assert len(data) == 1
+
+
+    def test_create_dog(self):
+        brd = baker.make("dogs.Breed")
+        hb = baker.make("dogs.Hobby")
+        cnt = baker.make("dogs.Country")
+        own = baker.make("dogs.Owner")
+
+        r = self.client.post("/api/dogs/", {
+            "name": "Собака",
+            "breed": brd.id,
+            "hobby": hb.id,
+            "country": cnt.id,
+            "owner": own.id
+        })
+
+        new_dog_id = r.json()['id']
+
+        dogs = Dog.objects.all()
+        assert len(dogs) == 1
+
+        new_dog = Dog.objects.filter(id=new_dog_id).first()
+        assert new_dog.name == "Собака"
+        assert new_dog.breed == brd
+        assert new_dog.hobby == hb
+        assert new_dog.country == cnt
+        assert new_dog.owner == own
+
+    def test_delete_dog(self):
+        dogs = baker.make("Dog", 10)
+        r = self.client.get("/api/dogs/")
+        data = r.json()
+        assert len(data) == 10
+
+        dog_id_to_delete = dogs[3].id
+        self.client.delete(f'/api/dogs/{dog_id_to_delete}/')
+
+        r = self.client.get("/api/dogs/")
+        data = r.json()
+        assert len(data) == 9
+
+        assert dog_id_to_delete not in [i['id'] for i in data] 
+
+
+    def test_update_dog(self):
+        brd = baker.make("dogs.Breed")
+        hb = baker.make("dogs.Hobby")
+        cnt = baker.make("dogs.Country")
+        own = baker.make("dogs.Owner")
+
+        dogs = baker.make("Dog", 10, breed = brd, hobby = hb, country = cnt, owner = own)
+        dog: Dog = dogs[2]
+
+        r = self.client.get(f'/api/dogs/{dog.id}/')
+        data = r.json()
+        assert data['name'] == dog.name
+        assert data['breed']['id'] == dog.breed.id 
+        assert data['hobby']['id'] == dog.hobby.id 
+        assert data['country']['id'] == dog.country.id 
+        assert data['owner']['id'] == dog.owner.id 
+
+        r = self.client.patch(
+            f'/api/dogs/{dog.id}/',
+            {
+                "name": "Коржик",
+                "breed": brd.id,
+                "hobby": hb.id,
+                "country": cnt.id,
+                "owner": own.id
+            }
         )
-        
-        # 2. Создаем базовые связанные объекты
-        # Breed имеет только поле name
-        self.breed = Breed.objects.create(name="Лабрадор")
-        # Country имеет только поле country
-        self.country = Country.objects.create(country="Россия")
-        # Hobby имеет только поле name_hobby
-        self.hobby = Hobby.objects.create(name_hobby="Аджилити")
-        
-        # 3. Создаем владельца, привязанного к пользователю
-        self.owner = Owner.objects.create(
-            first_name="Иван", 
-            last_name="Петров", 
-            phone_number="89001234567",
-            user=self.user
-            # pictureOwner = models.ImageField... можно пропустить, т.к. null=True
+        assert r.status_code == 200
+
+        r = self.client.get(f'/api/dogs/{dog.id}/')
+        data = r.json()
+        assert data['name'] == "Коржик"
+        assert data['breed']['id'] == brd.id 
+        assert data['hobby']['id'] == hb.id 
+        assert data['country']['id'] == cnt.id 
+        assert data['owner']['id'] == own.id 
+
+        dog.refresh_from_db()
+        assert data['name'] == dog.name
+        assert data['breed']['id'] == brd.id 
+        assert data['hobby']['id'] == hb.id 
+        assert data['country']['id'] == cnt.id 
+        assert data['owner']['id'] == own.id
+
+
+
+class BreedViewsetTestCase(TestCase):
+    def setUp(self) -> None:
+        self.client = APIClient()
+
+    def test_list(self):
+        self.assertEqual(1,1)
+
+    def test_get_list2(self):
+        brd = baker.make("dogs.Breed")
+
+        r = self.client.get('/api/breed/')
+        data = r.json()
+        print(data)
+
+        assert brd.name == data[0]['name']
+        assert len(data) == 1
+
+
+    def test_create_breed(self):
+        r = self.client.post("/api/breed/", {
+            "name": "Собака2",
+        })
+
+        new_breed_id = r.json()['id']
+
+        breeds = Breed.objects.all()
+        assert len(breeds) == 1
+
+        new_breed = Breed.objects.filter(id=new_breed_id).first()
+        assert new_breed.name == "Собака2"
+
+
+    def test_delete_breed(self):
+        breeds = baker.make("Breed", 10)
+        r = self.client.get("/api/breed/")
+        data = r.json()
+        assert len(data) == 10
+
+        breed_id_to_delete = breeds[3].id
+        self.client.delete(f'/api/breed/{breed_id_to_delete}/')
+
+        r = self.client.get("/api/breed/")
+        data = r.json()
+        assert len(data) == 9
+
+        assert breed_id_to_delete not in [i['id'] for i in data] 
+
+
+    def test_update_breed(self):
+        breeds = baker.make("Breed", 10)
+        breed: Breed = breeds[2]
+
+        r = self.client.get(f'/api/breed/{breed.id}/')
+        data = r.json()
+        assert data['name'] == breed.name 
+
+        r = self.client.patch(
+            f'/api/breed/{breed.id}/',
+            {
+                "name": "Собака2",
+            }
         )
-        
-        # 4. Создаем собаку, привязанную ко всем объектам
-        self.dog = Dog.objects.create(
-            name="Шарик",
-            breed=self.breed,
-            owner=self.owner,
-            country=self.country,
-            hobby=self.hobby,
-            user=self.user
-            # picture = models.ImageField... можно пропустить, т.к. null=True
+        assert r.status_code == 200
+
+        r = self.client.get(f'/api/breed/{breed.id}/')
+        data = r.json()
+        assert data['name'] == "Собака2"
+
+        breed.refresh_from_db()
+        assert data['name'] == breed.name
+
+
+class OwnerViewsetTestCase(TestCase):
+    def setUp(self) -> None:
+        self.client = APIClient()
+
+    def test_list(self):
+        self.assertEqual(1,1)
+
+    def test_get_list3(self):
+        own = baker.make("dogs.Owner")
+
+        r = self.client.get('/api/owner/')
+        data = r.json()
+        print(data)
+
+        assert own.first_name == data[0]['first_name']
+        assert own.last_name == data[0]['last_name']
+        assert own.phone_number == data[0]['phone_number']
+        assert len(data) == 1
+
+
+    def test_create_owner(self):
+        r = self.client.post("/api/owner/", {
+            "first_name": "Петя",
+            "last_name": "Иванов",
+            "phone_number": "34545656787"
+        })
+
+        new_owner_id = r.json()['id']
+
+        owners = Owner.objects.all()
+        assert len(owners) == 1
+
+        new_owner = Owner.objects.filter(id=new_owner_id).first()
+        assert new_owner.first_name == "Петя"
+        assert new_owner.last_name == "Иванов"
+        assert new_owner.phone_number == "34545656787"
+
+
+    def test_delete_owner(self):
+        owners = baker.make("Owner", 10)
+        r = self.client.get("/api/owner/")
+        data = r.json()
+        assert len(data) == 10
+
+        owner_id_to_delete = owners[3].id
+        self.client.delete(f'/api/owner/{owner_id_to_delete}/')
+
+        r = self.client.get("/api/owner/")
+        data = r.json()
+        assert len(data) == 9
+
+        assert owner_id_to_delete not in [i['id'] for i in data] 
+
+
+    def test_update_owner(self):
+        owners = baker.make("Owner", 10)
+        owner: Owner = owners[2]
+
+        r = self.client.get(f'/api/owner/{owner.id}/')
+        data = r.json()
+        assert data['first_name'] == owner.first_name 
+        assert data['last_name'] == owner.last_name 
+        assert data['phone_number'] == owner.phone_number 
+
+        r = self.client.patch(
+            f'/api/owner/{owner.id}/',
+            {
+                "first_name": "Петя",
+                "last_name": "Иванов",
+                "phone_number": "34545656787",
+            }
         )
+        assert r.status_code == 200
 
-# ----------------------------------------------------------------------
+        r = self.client.get(f'/api/owner/{owner.id}/')
+        data = r.json()
+        assert data['first_name'] == "Петя"
+        assert data['last_name'] == "Иванов"
+        assert data['phone_number'] == "34545656787"
 
-class BreedModelTest(ModelTests):
-    """
-    Тесты для модели Breed (Порода).
-    """
+        owner.refresh_from_db()
+        assert data['first_name'] == owner.first_name
+        assert data['last_name'] == owner.last_name
+        assert data['phone_number'] == owner.phone_number
 
-    def test_breed_creation_and_fields(self):
-        """1. Проверяет, что порода создана и поле 'name' корректно."""
-        self.assertEqual(self.breed.name, "Лабрадор")
+class CountryViewsetTestCase(TestCase):
+    def setUp(self) -> None:
+        self.client = APIClient()
 
-    def test_breed_str_representation(self):
-        """2. Проверяет строковое представление (str) породы."""
-        self.assertEqual(str(self.breed), "Лабрадор")
-        
-# ----------------------------------------------------------------------
+    def test_list(self):
+        self.assertEqual(1,1)
 
-class CountryModelTest(ModelTests):
-    """
-    Тесты для модели Country (Страна проживания).
-    """
-    
-    def test_country_creation_and_fields(self):
-        """3. Проверяет, что страна создана и поле 'country' корректно."""
-        self.assertEqual(self.country.country, "Россия")
+    def test_get_list2(self):
+        cnt = baker.make("dogs.Country")
 
-    def test_country_str_representation(self):
-        """4. Проверяет строковое представление (str) страны."""
-        self.assertEqual(str(self.country), "Россия")
-        
-# ----------------------------------------------------------------------
+        r = self.client.get('/api/country/')
+        data = r.json()
+        print(data)
 
-class HobbyModelTest(ModelTests):
-    """
-    Тесты для модели Hobby (Хобби).
-    """
-    
-    def test_hobby_creation_and_fields(self):
-        """5. Проверяет, что хобби создано и поле 'name_hobby' корректно."""
-        self.assertEqual(self.hobby.name_hobby, "Аджилити")
+        assert cnt.country == data[0]['country']
+        assert len(data) == 1
 
-    def test_hobby_str_representation(self):
-        """6. Проверяет строковое представление (str) хобби."""
-        self.assertEqual(str(self.hobby), "Аджилити")
 
-# ----------------------------------------------------------------------
+    def test_create_country(self):
+        r = self.client.post("/api/country/", {
+            "country": "СССССР",
+        })
 
-class OwnerModelTest(ModelTests):
-    """
-    Тесты для модели Owner (Владелец).
-    """
+        new_country_id = r.json()['id']
 
-    def test_owner_creation_and_fields(self):
-        """7. Проверяет создание владельца и основные поля."""
-        self.assertEqual(self.owner.first_name, "Иван")
-        self.assertEqual(self.owner.last_name, "Петров")
-        self.assertEqual(self.owner.phone_number, "89001234567")
+        countries = Country.objects.all()
+        assert len(countries) == 1
 
-    def test_owner_str_representation(self):
-        """8. Проверяет строковое представление (str) владельца."""
-        self.assertEqual(str(self.owner), "Иван Петров")
+        new_country = Country.objects.filter(id=new_country_id).first()
+        assert new_country.country == "СССССР"
 
-    def test_owner_user_name_property(self):
-        """9. Проверяет корректность @property user_name."""
-        self.assertEqual(self.owner.user_name, "testuser")
-        
-# ----------------------------------------------------------------------
 
-class DogModelTest(ModelTests):
-    """
-    Тесты для модели Dog (Собака).
-    """
+    def test_delete_country(self):
+        countries = baker.make("Country", 10)
+        r = self.client.get("/api/country/")
+        data = r.json()
+        assert len(data) == 10
 
-    def test_dog_creation_and_fields(self):
-        """10. Проверяет создание собаки и поле 'name'."""
-        self.assertEqual(self.dog.name, "Шарик")
-        self.assertEqual(self.dog.user, self.user)
+        country_id_to_delete = countries[3].id
+        self.client.delete(f'/api/country/{country_id_to_delete}/')
 
-    def test_dog_relationships(self):
-        """11. Проверяет корректность внешних ключей (связей)."""
-        self.assertEqual(self.dog.breed.name, "Лабрадор")
-        self.assertEqual(self.dog.owner.first_name, "Иван")
-        self.assertEqual(self.dog.country.country, "Россия")
-        self.assertEqual(self.dog.hobby.name_hobby, "Аджилити")
-        
-    def test_dog_str_representation(self):
-        """12. Проверяет строковое представление (str) собаки."""
-        self.assertEqual(str(self.dog), "Шарик")
-        
-    def test_related_name_access(self):
-        """13. Проверяет обратный доступ через related_name."""
-        self.assertIn(self.dog, self.owner.dogs.all())
-        self.assertIn(self.dog, self.country.dog_country.all())
-        self.assertIn(self.dog, self.hobby.dog_hobby.all())
-        
+        r = self.client.get("/api/country/")
+        data = r.json()
+        assert len(data) == 9
+
+        assert country_id_to_delete not in [i['id'] for i in data] 
+
+
+    def test_update_country(self):
+        countries = baker.make("Country", 10)
+        country: Country = countries[2]
+
+        r = self.client.get(f'/api/country/{country.id}/')
+        data = r.json()
+        assert data['country'] == country.country 
+
+        r = self.client.patch(
+            f'/api/country/{country.id}/',
+            {
+                "country": "СССССР",
+            }
+        )
+        assert r.status_code == 200
+
+        r = self.client.get(f'/api/country/{country.id}/')
+        data = r.json()
+        assert data['country'] == "СССССР"
+
+        country.refresh_from_db()
+        assert data['country'] == country.country
+
+
+class HobbyViewsetTestCase(TestCase):
+    def setUp(self) -> None:
+        self.client = APIClient()
+
+    def test_list(self):
+        self.assertEqual(1,1)
+
+    def test_get_list3(self):
+        hb = baker.make("dogs.Hobby")
+
+        r = self.client.get('/api/hobby/')
+        data = r.json()
+        print(data)
+
+        assert hb.name_hobby == data[0]['name_hobby']
+        assert len(data) == 1
+
+
+    def test_create_hobby(self):
+        r = self.client.post("/api/hobby/", {
+            "name_hobby": "Сон",
+        })
+
+        new_hobby_id = r.json()['id']
+
+        hobbies = Hobby.objects.all()
+        assert len(hobbies) == 1
+
+        new_hobby = Hobby.objects.filter(id=new_hobby_id).first()
+        assert new_hobby.name_hobby == "Сон"
+
+
+    def test_delete_hobby(self):
+        hobbies = baker.make("Hobby", 10)
+        r = self.client.get("/api/hobby/")
+        data = r.json()
+        assert len(data) == 10
+
+        hobby_id_to_delete = hobbies[3].id
+        self.client.delete(f'/api/hobby/{hobby_id_to_delete}/')
+
+        r = self.client.get("/api/hobby/")
+        data = r.json()
+        assert len(data) == 9
+
+        assert hobby_id_to_delete not in [i['id'] for i in data] 
+
+
+    def test_update_hobby(self):
+        hobbies = baker.make("Hobby", 10)
+        hobby: Hobby = hobbies[2]
+
+        r = self.client.get(f'/api/hobby/{hobby.id}/')
+        data = r.json()
+        assert data['name_hobby'] == hobby.name_hobby
+
+        r = self.client.patch(
+            f'/api/hobby/{hobby.id}/',
+            {
+                "name_hobby": "Сон",
+            }
+        )
+        assert r.status_code == 200
+
+        r = self.client.get(f'/api/hobby/{hobby.id}/')
+        data = r.json()
+        assert data['name_hobby'] == "Сон"
+
+        hobby.refresh_from_db()
+        assert data['name_hobby'] == hobby.name_hobby
