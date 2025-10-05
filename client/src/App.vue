@@ -42,11 +42,11 @@ const router = useRouter();
       </li>
     </ul> -->
 
-    <!-- <ul class="navbar-nav">
+    <ul class="navbar-nav">
       <li class="nav-item">
         <router-link class="nav-link" to="/login"> Вход</router-link>
       </li>
-    </ul> -->
+    </ul>
   </div>
 </nav>
 <router-view/>
