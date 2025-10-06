@@ -44,7 +44,7 @@ const router = useRouter();
 
     <ul class="navbar-nav">
       <li class="nav-item">
-        <router-link class="nav-link" to="/login"> Вvsbnjббббд </router-link>
+        <router-link class="nav-link" to="/login"> Вvsbnпрпиотьjббббд </router-link>
       </li>
     </ul>
   </div>
