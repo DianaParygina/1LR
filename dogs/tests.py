@@ -1,27 +1,24 @@
-from django.test import TestCase
-from django.contrib.auth import get_user_model
-from rest_framework.test import APIRequestFactory, APITestCase
+from rest_framework.test import APITestCase
 from rest_framework import status
+from django.contrib.auth import get_user_model
 
-# Убедитесь, что ваш путь импорта моделей правильный (например, 'dogs.models')
+# Убедитесь, что ваш путь импорта моделей правильный
 from dogs.models import Breed, Dog, Owner, Hobby, Country
-# Убедитесь, что ваш путь импорта сериализаторов правильный (например, 'dogs.serializers')
-from dogs.serializers import (
-    BreedSerializer, BreedCreateSerializer, OwnerSerializer, 
-    HobbySerializer, CountrySerializer, DogListSerializer, 
-    DogCreateSerializer, DogUpdateSerializer, LoginSerializer
-)
 
+# Получаем модель пользователя Django
 User = get_user_model()
 
-class ModelTests(TestCase):
-    """
-    Создание общих объектов (включая пользователя) для всех тестов
-    """
+# ==============================================================================
+# 1. БАЗОВАЯ НАСТРОЙКА ТЕСТОВЫХ ДАННЫХ
+# ==============================================================================
+
+class BaseAPITestSetup(APITestCase):
+    """Базовый класс для создания тестовых данных и общих URL."""
+    
     def setUp(self):
         super().setUp()
         
-        # Создание тестового пользователя
+        # Создание тестовых пользователей
         self.user = User.objects.create_user(username='testuser', password='testpassword')
         self.another_user = User.objects.create_user(username='otheruser', password='otherpassword')
         
@@ -29,6 +26,8 @@ class ModelTests(TestCase):
         self.breed = Breed.objects.create(name='Лабрадор')
         self.country = Country.objects.create(country='Россия')
         self.hobby = Hobby.objects.create(name_hobby='Аджилити')
+        
+        # Владелец, принадлежащий self.user
         self.owner = Owner.objects.create(
             first_name='Иван', 
             last_name='Петров', 
@@ -36,7 +35,15 @@ class ModelTests(TestCase):
             user=self.user
         )
         
-        # Создание объекта Dog
+        # Владелец, принадлежащий self.another_user (для проверки прав)
+        self.other_owner = Owner.objects.create(
+            first_name='Олег', 
+            last_name='Сидоров', 
+            phone_number='81112223344', 
+            user=self.another_user
+        )
+        
+        # Собака, принадлежащая self.user
         self.dog = Dog.objects.create(
             name='Рекс',
             breed=self.breed,
@@ -46,66 +53,178 @@ class ModelTests(TestCase):
             user=self.user
         )
 
-# ----------------------------------------------------------------------
-# ПРОПУСКАЕМ тесты для Breed, Country, Hobby, Owner, Dog. Они используют setUp.
-# ----------------------------------------------------------------------
+        # Собака, принадлежащая self.another_user
+        self.other_dog = Dog.objects.create(
+            name='Барбос',
+            breed=self.breed,
+            owner=self.other_owner,
+            country=self.country,
+            hobby=self.hobby,
+            user=self.another_user
+        )
 
-class DogCreationTest(ModelTests):
-    """
-    Фокусируемся только на test_create_dog
-    """
-    def test_create_dog(self):
-        """Проверяет, что собака создается с привязкой к пользователю и владельцу."""
-        dog_count_before = Dog.objects.count()
+        # --- Данные для POST/PUT запросов ---
+        self.valid_dog_data = {
+            'name': 'Шарик',
+            'breed': self.breed.id,
+            'owner': self.owner.id,
+            'country': self.country.id,
+            'hobby': self.hobby.id,
+        }
         
-        # Передаем self.context для установки request.user
-        serializer = DogCreateSerializer(data=self.valid_dog_data, context=self.context)
-        self.assertTrue(serializer.is_valid(), msg=serializer.errors)
+        self.valid_owner_data = {
+            'first_name': 'Анна',
+            'last_name': 'Сидорова',
+            'phone_number': '89991112233',
+        }
         
-        dog_instance = serializer.save()
+        self.valid_breed_data = {'name': 'Пудель'}
 
-        # Проверка, что объект был создан и user установлен корректно
+        # --- URL-адреса, соответствующие DefaultRouter ---
+        self.DOG_LIST_URL = '/api/dogs/'
+        self.OWNER_LIST_URL = '/api/owner/'
+        self.BREED_LIST_URL = '/api/breed/'
+        self.COUNTRY_LIST_URL = '/api/country/'
+        self.HOBBY_LIST_URL = '/api/hobby/'
+
+# ==============================================================================
+# 2. ТЕСТЫ API ДЛЯ DOG ( dogs )
+# ==============================================================================
+
+class DogViewTest(BaseAPITestSetup):
+    """Тесты API для DogsViewset."""
+    
+    def test_list_dogs_authenticated(self):
+        """Проверка получения списка собак (GET /api/dogs/). Должен видеть только своих."""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.DOG_LIST_URL, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Ожидаем видеть только свою собаку (Рекс), но не чужую (Барбос)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['name'], 'Рекс')
+        
+    def test_create_dog_authenticated(self):
+        """Проверка создания собаки (POST /api/dogs/)."""
+        self.client.force_authenticate(user=self.user)
+        initial_count = Dog.objects.count() # Изначально 2 собаки
+        
+        response = self.client.post(self.DOG_LIST_URL, self.valid_dog_data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(Dog.objects.count(), initial_count + 1)
-        self.assertEqual(dog_instance.name, self.valid_dog_data['name'])
-        self.assertEqual(dog_instance.user, self.user)
         
-    def test_dog_creation_with_invalid_foreign_key(self):
-        """Проверка, что невалидный внешний ключ вызывает ошибку."""
-        serializer = DogCreateSerializer(data=self.invalid_dog_data, context=self.context)
-        self.assertFalse(serializer.is_valid())
+    def test_update_own_dog_authenticated(self):
+        """Проверка обновления своей собаки (PUT /api/dogs/{id}/)."""
+        self.client.force_authenticate(user=self.user)
+        update_data = self.valid_dog_data.copy()
+        update_data['name'] = 'Новое Имя'
         
-        # 1. Проверяем, что объект создан
-        self.assertEqual(Dog.objects.count(), dog_count_before + 1)
-        # 2. Проверяем, что внешний ключ user установлен
-        self.assertEqual(new_dog.user, self.user)
-        # 3. Проверяем, что имя установлено
-        self.assertEqual(new_dog.name, "Рекс")
+        response = self.client.put(f'{self.DOG_LIST_URL}{self.dog.id}/', update_data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.dog.refresh_from_db()
+        self.assertEqual(self.dog.name, 'Новое Имя')
 
+    def test_update_other_dog_unauthorized(self):
+        """Проверка, что нельзя обновить чужую собаку (PUT /api/dogs/{id}/)."""
+        self.client.force_authenticate(user=self.user)
+        update_data = self.valid_dog_data.copy()
+        update_data['name'] = 'Взлом!'
+        
+        response = self.client.put(f'{self.DOG_LIST_URL}{self.other_dog.id}/', update_data, format='json')
+        
+        # Если у вас настроены права доступа IsOwner, вы получите 403
+        self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
+        
+    def test_delete_dog_authenticated(self):
+        """Проверка удаления своей собаки (DELETE /api/dogs/{id}/)."""
+        self.client.force_authenticate(user=self.user)
+        initial_count = Dog.objects.count()
+        
+        response = self.client.delete(f'{self.DOG_LIST_URL}{self.dog.id}/')
+        
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(Dog.objects.count(), initial_count - 1)
 
-class OwnerCreationTest(ModelTests):
-    """
-    Фокусируемся только на test_create_owner
-    """
-    def test_create_owner(self):
-        """Проверяет, что владелец создается с привязкой к новому пользователю."""
-        owner_count_before = Owner.objects.count()
+# ==============================================================================
+# 3. ТЕСТЫ API ДЛЯ OWNER ( owner )
+# ==============================================================================
+
+class OwnerViewTest(BaseAPITestSetup):
+    """Тесты API для OwnersViewset."""
+    
+    def test_create_owner_authenticated(self):
+        """Проверка создания владельца (POST /api/owner/)."""
+        self.client.force_authenticate(user=self.another_user) 
+        initial_count = Owner.objects.count() # Изначально 2 владельца
         
-        # Создаем еще одного пользователя, чтобы избежать конфликта
-        new_user = User.objects.create_user(
-            username='newowneruser', 
-            password='newpassword'
-        )
+        response = self.client.post(self.OWNER_LIST_URL, self.valid_owner_data, format='json')
         
-        new_owner = Owner.objects.create(
-            first_name="Елена",
-            last_name="Сергеева",
-            phone_number="89991112233",
-            user=new_user
-        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Owner.objects.count(), initial_count + 1)
+        self.assertEqual(Owner.objects.last().user, self.another_user)
+
+    def test_delete_owner_authenticated(self):
+        """Проверка удаления своего владельца (DELETE /api/owner/{id}/)."""
+        self.client.force_authenticate(user=self.user)
+        initial_count = Owner.objects.count()
         
-        # 1. Проверяем, что объект создан
-        self.assertEqual(Owner.objects.count(), owner_count_before + 1)
-        # 2. Проверяем, что внешний ключ user установлен
-        self.assertEqual(new_owner.user, new_user)
-        # 3. Проверяем, что строковое представление корректно
-        self.assertEqual(str(new_owner), "Елена Сергеева")
+        response = self.client.delete(f'{self.OWNER_LIST_URL}{self.owner.id}/')
+        
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(Owner.objects.count(), initial_count - 1)
+
+# ==============================================================================
+# 4. ТЕСТЫ API ДЛЯ BREED ( breed )
+# ==============================================================================
+
+class BreedViewTest(BaseAPITestSetup):
+    """Тесты API для BreedsViewset."""
+    
+    def test_create_breed_authenticated(self):
+        """Проверка создания породы (POST /api/breed/)."""
+        self.client.force_authenticate(user=self.user)
+        initial_count = Breed.objects.count()
+        
+        response = self.client.post(self.BREED_LIST_URL, self.valid_breed_data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Breed.objects.count(), initial_count + 1)
+
+    def test_delete_breed_authenticated(self):
+        """Проверка удаления породы (DELETE /api/breed/{id}/)."""
+        self.client.force_authenticate(user=self.user)
+        initial_count = Breed.objects.count()
+        
+        # Создаем новую породу для удаления
+        new_breed = Breed.objects.create(name='Долматин')
+        
+        response = self.client.delete(f'{self.BREED_LIST_URL}{new_breed.id}/')
+        
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(Breed.objects.count(), initial_count) # Удалили одну, вернулись к исходному количеству
+
+# ==============================================================================
+# 5. ТЕСТЫ API ДЛЯ COUNTRY ( country )
+# ==============================================================================
+
+class CountryViewTest(BaseAPITestSetup):
+    """Тесты API для CountryViewset."""
+    
+    def test_list_countries(self):
+        """Проверка получения списка всех стран (GET /api/country/)."""
+        response = self.client.get(self.COUNTRY_LIST_URL, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+# ==============================================================================
+# 6. ТЕСТЫ API ДЛЯ HOBBY ( hobby )
+# ==============================================================================
+
+class HobbyViewTest(BaseAPITestSetup):
+    """Тесты API для HobbyViewset."""
+    
+    def test_list_hobbies(self):
+        """Проверка получения списка всех хобби (GET /api/hobby/)."""
+        response = self.client.get(self.HOBBY_LIST_URL, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
