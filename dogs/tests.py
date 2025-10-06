@@ -19,7 +19,6 @@ class BaseAPITestSetup(APITestCase):
         super().setUp()
         
         # Создание тестовых пользователей
-        # Обратите внимание: вашему API не важно, кто создает, но для тестов мы их используем
         self.user = User.objects.create_user(username='testuser', password='testpassword')
         self.another_user = User.objects.create_user(username='otheruser', password='otherpassword')
         
@@ -33,7 +32,7 @@ class BaseAPITestSetup(APITestCase):
             first_name='Иван', 
             last_name='Петров', 
             phone_number='88005553535', 
-            user=self.user # Важно для логики perform_create, если вы ее включите
+            user=self.user 
         )
         
         # Владелец, принадлежащий self.another_user
@@ -96,13 +95,12 @@ class DogViewTest(BaseAPITestSetup):
     """Тесты API для DogsViewset, адаптированные под AllowAny и отсутствие фильтрации."""
     
     def test_list_dogs_authenticated_sees_all(self):
-        """ПРОШЕЛ: Проверка получения списка собак. Ожидаем увидеть ВСЕХ собак (2)."""
-        # ТЕСТ 1 ИСПРАВЛЕН: Ожидаем len(response.data) == 2
+        """Проверка получения списка собак. Ожидаем увидеть ВСЕХ собак (2)."""
+        # ИСПРАВЛЕНИЕ 1: Ожидаем 2 объекта, так как фильтрация отключена.
         self.client.force_authenticate(user=self.user)
         response = self.client.get(self.DOG_LIST_URL, format='json')
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # Ожидаем 2 объекта, так как фильтрация в get_queryset отключена
         self.assertEqual(len(response.data), 2) 
         
     def test_create_dog_authenticated(self):
@@ -127,19 +125,18 @@ class DogViewTest(BaseAPITestSetup):
         self.dog.refresh_from_db()
         self.assertEqual(self.dog.name, 'Новое Имя')
 
-    def test_update_other_dog_unauthorized_passes(self):
-        """ПРОШЕЛ: Проверка, что аутентифицированный пользователь МОЖЕТ обновить чужую собаку."""
-        # ТЕСТ 2 ИСПРАВЛЕН: Ожидаем 200 OK
+    def test_update_other_dog_is_allowed(self):
+        """Проверка, что аутентифицированный пользователь МОЖЕТ обновить чужую собаку."""
+        # ИСПРАВЛЕНИЕ 2: Ожидаем 200 OK, так как IsOwnerOrReadOnly не применяется.
         self.client.force_authenticate(user=self.user)
         update_data = self.valid_dog_data.copy()
         update_data['name'] = 'Взлом!'
         
         response = self.client.put(f'{self.DOG_LIST_URL}{self.other_dog.id}/', update_data, format='json')
         
-        # Ожидаем 200 OK, так как IsOwnerOrReadOnly не применяется и AllowAny разрешает всё.
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         
-        # Проверяем, что чужая собака действительно обновилась
+        # Дополнительная проверка, что чужая собака действительно обновилась
         self.other_dog.refresh_from_db()
         self.assertEqual(self.other_dog.name, 'Взлом!')
         
@@ -162,7 +159,6 @@ class OwnerViewTest(BaseAPITestSetup):
 
     def test_list_owners_authenticated_sees_all(self):
         """Проверка получения списка владельцев. Ожидаем увидеть ВСЕХ владельцев (2)."""
-        # Аналогично собакам, ожидаем, что get_queryset вернет всех, так как фильтрация отключена.
         self.client.force_authenticate(user=self.user)
         response = self.client.get(self.OWNER_LIST_URL, format='json')
         
@@ -231,7 +227,6 @@ class BreedViewTest(BaseAPITestSetup):
         response = self.client.delete(f'{self.BREED_LIST_URL}{new_breed.id}/')
         
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-        # Удалили одну, количество должно вернуться к исходному
         self.assertEqual(Breed.objects.count(), initial_count) 
 
 # ==============================================================================
