@@ -2,9 +2,11 @@ pipeline {
     agent any
 
     environment {
+        // Переменные окружения для путей и команд Windows
         CMD = 'C:\\Windows\\System32\\cmd.exe'
         PM2_CMD = 'C:\\Users\\Diana\\AppData\\Roaming\\npm\\pm2.cmd'
         PYTHON_EXE = 'C:\\Program Files\\Python313\\python.exe'
+        // TARGET_DIR — это каталог, где лежат ваши Django/Vue проекты (для запуска и тестов)
         TARGET_DIR = 'C:\\Users\\Diana\\OneDrive\\Desktop\\DevOps\\1LR-Server'
     }
 
@@ -13,119 +15,121 @@ pipeline {
     }
 
     stages {
-        stage('Stop Existing Servers') {
+        // Стадии 'Start Backend Server', 'Start Frontend Server', 'Run Tests' остаются без изменений
+        stage('Start Backend Server') {
             steps {
                 bat """
-                    "${PM2_CMD}" delete django || echo No Django process to delete
-                    "${PM2_CMD}" delete vue || echo No Vue process to delete
-                    timeout /t 5 /nobreak > nul
+                    cd "${TARGET_DIR}"
+                    call "${PM2_CMD}" delete django || echo No existing Django process
+                    call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
                 """
             }
         }
 
-        stage('Update Code') {
+        stage('Start Frontend Server') {
             steps {
-                withCredentials([
-                    usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
-                    string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
-                ]) {
-                    bat """
-                        cd "${TARGET_DIR}"
-                        
-                        :: Настройка Git
-                        git config --global --add safe.directory "${TARGET_DIR}"
-                        git config user.name "%GIT_USER%"
-                        git config user.email "%GIT_EMAIL%"
-                        
-                        :: Обновление кода
-                        git fetch origin
-                        git checkout main
-                        git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
-                        
-                        :: Обновление зависимостей
-                        "${PYTHON_EXE}" -m pip install -r requirements.txt
-                        
-                        :: Миграции Django
-                        "${PYTHON_EXE}" manage.py migrate
-                        "${PYTHON_EXE}" manage.py collectstatic --noinput
-                    """
-                }
+                bat """
+                    cd "${TARGET_DIR}\\client"
+                    call "${PM2_CMD}" delete vue || echo No existing Vue process
+                    
+                    :: Передаем команду 'npm run dev' в PM2 через cmd.exe, чтобы обеспечить корректный запуск
+                    call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
+                    
+                    echo Frontend started in background via PM2
+                """
             }
         }
 
         stage('Run Tests') {
             steps {
-                bat """
-                    cd "${TARGET_DIR}"
-                    "${PYTHON_EXE}" manage.py test dogs --verbosity=2
-                """
-            }
-        }
-
-        stage('Start Servers') {
-            steps {
                 script {
-                    // Запуск Django с автоматической перезагрузкой
-                    bat """
-                        cd "${TARGET_DIR}"
-                        :: Используем PM2 с watch для отслеживания изменений
-                        "${PM2_CMD}" start "${PYTHON_EXE}" --name django --interpreter none --watch manage.py -- manage.py runserver 127.0.0.1:8000
-                    """
-                    
-                    // Ждем запуска бэкенда
-                    sleep(10)
-                    
-                    // Запуск Vue dev server
-                    bat """
-                        cd "${TARGET_DIR}\\client"
-                        :: Устанавливаем зависимости если нужно
-                        if not exist node_modules (
-                            npm install
-                        )
-                        :: Запускаем Vue с hot reload
-                        "${PM2_CMD}" start "npm" --name vue -- run dev
-                    """
-                    
-                    // Ждем запуска фронтенда
-                    sleep(15)
+                    try {
+                        bat """
+                            cd "${TARGET_DIR}"
+                            "${PYTHON_EXE}" manage.py test dogs
+                        """
+                        echo "Tests passed! Keeping servers running."
+                    } catch (err) {
+                        echo "Tests failed! Stopping servers..."
+                        bat """
+                            "${PM2_CMD}" delete django || echo No Django process to delete
+                            "${PM2_CMD}" delete vue || echo No Vue process to delete
+                        """
+                        error("Integration tests failed. Servers stopped.")
+                    }
                 }
             }
         }
-
-        stage('Health Check') {
+        
+        stage('Merge fix into main and deploy') {
+            when { 
+                expression { env.BRANCH_NAME?.contains('fix') || env.GIT_BRANCH?.contains('fix') } 
+            }
             steps {
                 script {
-                    // Проверяем, что серверы работают
-                    bat """
-                        curl -f http://127.0.0.1:8000/api/dogs/ || echo "Backend not responding"
-                        curl -f http://127.0.0.1:5173/ || echo "Frontend not responding"
-                    """
+                    if (currentBuild.result == null || currentBuild.result == 'SUCCESS') {
+                        withCredentials([
+                            usernamePassword(credentialsId: 'github-creds', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_TOKEN'),
+                            string(credentialsId: 'github-email', variable: 'GIT_EMAIL')
+                        ]) {
+                            bat """
+                                :: *** ПРЕДВАРИТЕЛЬНАЯ НАСТРОЙКА GIT ***
+                                git config --global --add safe.directory "C:/Users/Diana/OneDrive/Desktop/DevOps/1LR-Server"
+                                
+                                git config user.name "%GIT_USER%"
+                                git config user.email "%GIT_EMAIL%"
+
+                                :: *** 1. GIT-ОПЕРАЦИИ В JENKINS WORKSPACE (СЛИЯНИЕ И PUSH НА GITHUB) ***
+                                
+                                git checkout main
+                                git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
+                                git merge origin/fix --no-ff
+                                git push https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main
+
+                                git checkout fix
+                                git reset --hard main
+                                git push --force https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git fix
+
+                                :: *** 2. РАЗВЕРТЫВАНИЕ И ОБНОВЛЕНИЕ КОДА В TARGET_DIR ***
+                                
+                                cd "${TARGET_DIR}"
+                                
+                                :: Инициализация Git в целевой папке, если она еще не репозиторий
+                                if not exist .git (
+                                    git init
+                                    git remote add origin https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git
+                                )
+
+                                :: 🎯 ИСПРАВЛЕНИЕ #2: Скачиваем самый свежий код из обновленной main и обновляем сервер!
+                                git fetch
+                                git checkout main
+                                git pull https://%GIT_USER%:%GIT_TOKEN%@github.com/DianaParygina/1LR.git main 
+
+                                :: *** 3. PM2-ОПЕРАЦИИ (ПЕРЕЗАПУСК) ***
+                                
+                                :: Перезапуск Django
+                                call "${PM2_CMD}" delete django || echo No Django process
+                                call "${PM2_CMD}" start "${PYTHON_EXE}" --name django -- manage.py runserver 127.0.0.1:8000
+
+                                :: Перезапуск Vue
+                                cd "${TARGET_DIR}\\client"
+                                call "${PM2_CMD}" delete vue || echo No Vue process
+                                call "${PM2_CMD}" start "${CMD}" --name vue -- /c "cd ${TARGET_DIR}\\client && npm run dev"
+                            """
+                        }
+                    } else {
+                        echo "Tests failed. Skipping merge and deployment."
+                    }
                 }
             }
         }
     }
     
     post {
-        always {
-            // Сохраняем логи PM2
-            bat """
-                "${PM2_CMD}" logs --lines 100 > "${env.WORKSPACE}\\pm2_logs.txt"
-            """
-            archiveArtifacts artifacts: 'pm2_logs.txt', fingerprint: true
-        }
-        
         success {
-            echo "Deployment successful! Servers are running with latest code."
+            echo "Deployment successful. Backend and Frontend are running via PM2 with the latest code!"
             echo "Backend: http://127.0.0.1:8000/"
             echo "Frontend: http://127.0.0.1:5173/"
-        }
-        
-        failure {
-            echo "Deployment failed. Stopping servers..."
-            bat """
-                "${PM2_CMD}" delete django || echo No Django process
-                "${PM2_CMD}" delete vue || echo No Vue process
-            """
         }
     }
 }
