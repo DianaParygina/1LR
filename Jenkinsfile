@@ -74,7 +74,6 @@ pipeline {
                         ]) {
                             bat """
                                 :: *** ПРЕДВАРИТЕЛЬНАЯ НАСТРОЙКА GIT ***
-                                :: 🎯 ИСПРАВЛЕНИЕ #1: Разрешение проблемы прав доступа Git (dubious ownership) 
                                 git config --global --add safe.directory "C:/Users/Diana/OneDrive/Desktop/DevOps/1LR-Server"
                                 
                                 git config user.name "%GIT_USER%"
