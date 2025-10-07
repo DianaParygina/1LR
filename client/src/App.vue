@@ -44,7 +44,11 @@ const router = useRouter();
 
     <ul class="navbar-nav">
       <li class="nav-item">
+<<<<<<< HEAD
+        <router-link class="nav-link" to="/login"> выход </router-link>
+=======
         <router-link class="nav-link" to="/login"> чапиы </router-link>
+>>>>>>> aae3cd0f2fc27e66e062c136ad44db33a7d327df
       </li>
     </ul>
   </div>
